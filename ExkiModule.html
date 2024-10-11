@@ -1,0 +1,864 @@
+<html><head><base href="https://websim.example.com/csv-importer-calendar-visitors-passersby-graph/">
+<title>EXKI, Visitors & Capture Rate Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat&family=League+Spartan:wght@700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.9/flatpickr.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.9/flatpickr.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.20/jspdf.plugin.autotable.min.js"></script>
+<style>
+  body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: #f4f2e9;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  h1, h2 {
+    font-family: 'League Spartan', sans-serif;
+    font-weight: 700;
+    color: #2f7622;
+    text-align: center;
+  }
+  h1 {
+    margin-bottom: 0;
+  }
+  .subtitle {
+    color: #f39700;
+    font-size: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  #fileInput {
+    display: none;
+  }
+  .file-upload-btn, #datePicker {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin: 10px 0;
+  }
+  .file-upload-btn:hover, #datePicker:hover {
+    background-color: #45a049;
+  }
+  #errorMsg {
+    color: red;
+    margin-top: 10px;
+  }
+  #result {
+    margin-top: 20px;
+  }
+  .chart-container {
+    margin-top: 30px;
+    max-width: 100%;
+    height: 400px;
+  }
+  .slider-container {
+    margin-top: 20px;
+    text-align: center;
+  }
+  .slider-container label {
+    display: block;
+    margin-bottom: 10px;
+  }
+  .slider-container input[type="range"] {
+    width: 80%;
+    margin-bottom: 20px;
+  }
+  .export-buttons {
+    margin-top: 20px;
+    text-align: center;
+  }
+  .export-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin: 0 10px;
+  }
+  .export-btn:hover {
+    background-color: #45a049;
+  }
+  .text-analysis {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  .text-analysis h3 {
+    color: #2f7622;
+    margin-bottom: 15px;
+  }
+  .text-analysis p {
+    margin-bottom: 10px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>EXKI, Visitors & Capture Rate Analysis</h1>
+    <h2 class="subtitle">Ixelles</h2>
+    <input type="file" id="fileInput" accept=".csv">
+    <label for="fileInput" class="file-upload-btn">Choose CSV File</label>
+    <div id="errorMsg"></div>
+    
+    <div class="chart-container">
+      <canvas id="visitorsPassersbyChart"></canvas>
+    </div>
+    
+    <div class="chart-container">
+      <canvas id="dailyCaptureRateChart"></canvas>
+    </div>
+    
+    <h2>Date Selection for Detailed Analysis</h2>
+    <input type="text" id="datePicker" placeholder="Select a date">
+    <div id="result">
+      <div class="chart-container">
+        <canvas id="hourlyCaptureRateChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <canvas id="hourlyVisitorsPassersbyChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <canvas id="cumulativeVisitorsPassersbyChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <canvas id="periodCaptureRateChart"></canvas>
+      </div>
+      <div class="slider-container">
+        <label for="startTimeSlider">Start Time: <span id="startTimeValue">7:00</span></label>
+        <input type="range" id="startTimeSlider" min="0" max="23" value="7" step="1">
+        <label for="endTimeSlider">End Time: <span id="endTimeValue">20:00</span></label>
+        <input type="range" id="endTimeSlider" min="0" max="23" value="20" step="1">
+      </div>
+      <div id="textAnalysis" class="text-analysis"></div>
+    </div>
+    
+    <div class="export-buttons">
+      <button id="exportExcel" class="export-btn">Export to Excel</button>
+      <button id="exportPDF" class="export-btn">Export to PDF</button>
+    </div>
+  </div>
+
+  <script>
+    let csvData = [];
+    let columnNames = ['Timestamp', 'Visitors', 'Passersby'];
+    let visitorsPassersbyChart, dailyCaptureRateChart, hourlyCaptureRateChart, hourlyVisitorsPassersbyChart, cumulativeVisitorsPassersbyChart, periodCaptureRateChart;
+    let dates = [], visitors = [], passersby = [], captureRates = [], hourlyLabels = [], hourlyVisitors = [], hourlyPassersby = [], hourlyCaptureRates = [], periodCaptureRates = [];
+
+    document.getElementById('fileInput').addEventListener('change', handleFile, false);
+
+    function handleFile(e) {
+      const file = e.target.files[0];
+      const errorMsg = document.getElementById('errorMsg');
+
+      Papa.parse(file, {
+        complete: function(results) {
+          if (results.data.length > 0 && results.data[0].length === 3) {
+            errorMsg.textContent = '';
+            csvData = results.data.slice(1); // Remove header row
+            processDataForGraphs();
+          } else {
+            errorMsg.textContent = 'Error: The CSV file must have exactly 3 columns.';
+          }
+        }
+      });
+    }
+
+    function formatDate(date) {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dayOfWeek = days[date.getDay()];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      return `${dayOfWeek}, ${day} ${month} ${year}`;
+    }
+
+    function processDataForGraphs() {
+      const dailyData = {};
+
+      csvData.forEach(row => {
+        const [datePart, timePart] = row[0].split(' ');
+        const [day, month, year] = datePart.split('/');
+        const timestamp = new Date(year, month - 1, day);
+        const dateStr = formatDate(timestamp);
+
+        if (!dailyData[dateStr]) {
+          dailyData[dateStr] = { sumVisitors: 0, sumPassersby: 0 };
+        }
+        dailyData[dateStr].sumVisitors += parseFloat(row[1]) || 0;
+        dailyData[dateStr].sumPassersby += parseFloat(row[2]) || 0;
+      });
+
+      dates = Object.keys(dailyData).sort((a, b) => new Date(a.split(', ')[1]) - new Date(b.split(', ')[1]));
+      visitors = dates.map(date => dailyData[date].sumVisitors);
+      passersby = dates.map(date => dailyData[date].sumPassersby);
+      captureRates = dates.map(date => {
+        const { sumVisitors, sumPassersby } = dailyData[date];
+        return sumPassersby !== 0 ? (sumVisitors / sumPassersby) * 100 : 0;
+      });
+
+      renderVisitorsPassersbyGraph(dates, visitors, passersby);
+      renderDailyGraph(dates, captureRates);
+    }
+
+    function renderVisitorsPassersbyGraph(dates, visitors, passersby) {
+      const ctx = document.getElementById('visitorsPassersbyChart').getContext('2d');
+      
+      if (visitorsPassersbyChart) {
+        visitorsPassersbyChart.destroy();
+      }
+
+      visitorsPassersbyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Visitors',
+              data: visitors,
+              backgroundColor: 'rgba(179, 200, 54, 0.6)', 
+              borderColor: 'rgb(179, 200, 54)', 
+              borderWidth: 1,
+              yAxisID: 'y-axis-visitors'
+            },
+            {
+              label: 'Passersby',
+              data: passersby,
+              type: 'line',
+              fill: false,
+              borderColor: 'rgb(243, 151, 0)', 
+              yAxisID: 'y-axis-passersby'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            'y-axis-visitors': {
+              type: 'linear',
+              position: 'left',
+              title: {
+                display: true,
+                text: 'Visitors'
+              }
+            },
+            'y-axis-passersby': {
+              type: 'linear',
+              position: 'right',
+              title: {
+                display: true,
+                text: 'Passersby'
+              },
+              grid: {
+                drawOnChartArea: false
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Date'
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: 'Daily Visitors and Passersby',
+              color: '#317521'
+            }
+          }
+        }
+      });
+    }
+
+    function renderDailyGraph(dates, captureRates) {
+      const ctx = document.getElementById('dailyCaptureRateChart').getContext('2d');
+      
+      if (dailyCaptureRateChart) {
+        dailyCaptureRateChart.destroy();
+      }
+
+      dailyCaptureRateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'Daily Capture Rate (%)',
+            data: captureRates,
+            borderColor: 'rgb(179, 200, 54)', 
+            tension: 0.1,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Capture Rate (%)'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Date'
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: 'Daily Capture Rate (8:00 - 20:00)',
+              color: '#317521'
+            }
+          }
+        }
+      });
+    }
+
+    flatpickr("#datePicker", {
+      dateFormat: "D, d M Y",
+      onChange: function(selectedDates, dateStr, instance) {
+        analyzeHourlyData(dateStr);
+      }
+    });
+
+    let startTime = 7;
+    let endTime = 20;
+
+    document.getElementById('startTimeSlider').addEventListener('input', updateTimeRange);
+    document.getElementById('endTimeSlider').addEventListener('input', updateTimeRange);
+
+    function updateTimeRange(e) {
+      if (e.target.id === 'startTimeSlider') {
+        startTime = parseInt(e.target.value);
+        document.getElementById('startTimeValue').textContent = `${startTime}:00`;
+      } else {
+        endTime = parseInt(e.target.value);
+        document.getElementById('endTimeValue').textContent = `${endTime}:00`;
+      }
+      
+      if (startTime >= endTime) {
+        endTime = startTime + 1;
+        document.getElementById('endTimeSlider').value = endTime;
+        document.getElementById('endTimeValue').textContent = `${endTime}:00`;
+      }
+      
+      if (csvData.length > 0) {
+        const selectedDate = document.getElementById('datePicker').value;
+        analyzeHourlyData(selectedDate);
+      }
+    }
+
+    function analyzeHourlyData(selectedDate) {
+      const hourlyData = {};
+
+      for (let hour = 0; hour < 24; hour++) {
+        hourlyData[hour] = { visitors: 0, passersby: 0 };
+      }
+
+      csvData.forEach(row => {
+        const [datePart, timePart] = row[0].split(' ');
+        const [day, month, year] = datePart.split('/');
+        const [hours, minutes] = timePart.split(':');
+        const timestamp = new Date(year, month - 1, day, hours, minutes);
+        const dateStr = formatDate(timestamp);
+
+        if (dateStr === selectedDate) {
+          hourlyData[timestamp.getHours()].visitors += parseFloat(row[1]) || 0;
+          hourlyData[timestamp.getHours()].passersby += parseFloat(row[2]) || 0;
+        }
+      });
+
+      hourlyLabels = Object.keys(hourlyData).map(hour => `${hour}:00`);
+      hourlyVisitors = Object.values(hourlyData).map(data => data.visitors);
+      hourlyPassersby = Object.values(hourlyData).map(data => data.passersby);
+      hourlyCaptureRates = Object.values(hourlyData).map(({ visitors, passersby }) => 
+        passersby !== 0 ? (visitors / passersby) * 100 : 0
+      );
+
+      renderHourlyGraph(selectedDate, hourlyLabels, hourlyCaptureRates);
+      renderHourlyVisitorsPassersbyGraph(selectedDate, hourlyLabels, hourlyVisitors, hourlyPassersby);
+      renderCumulativeVisitorsPassersbyGraph(selectedDate, hourlyLabels, hourlyVisitors, hourlyPassersby);
+
+      periodCaptureRates = calculatePeriodCaptureRates(hourlyData);
+      renderPeriodCaptureRateChart(selectedDate, periodCaptureRates);
+      generateTextAnalysis(selectedDate, periodCaptureRates);
+    }
+
+    function calculatePeriodCaptureRates(hourlyData) {
+      const customPeriod = { name: 'Custom', start: startTime, end: endTime, timeframe: `${startTime}:00 - ${endTime}:00` };
+      const periods = [
+        { name: 'Morning', start: 7, end: 10, timeframe: '7:00 - 10:00' },
+        { name: 'Noon', start: 11, end: 14, timeframe: '11:00 - 14:00' },
+        { name: 'Afternoon', start: 16, end: 20, timeframe: '16:00 - 20:00' },
+        customPeriod
+      ];
+
+      return periods.map(period => {
+        let visitors = 0;
+        let passersby = 0;
+        for (let hour = period.start; hour <= period.end; hour++) {
+          visitors += hourlyData[hour].visitors;
+          passersby += hourlyData[hour].passersby;
+        }
+        const captureRate = passersby !== 0 ? (visitors / passersby) * 100 : 0;
+        return { name: period.name, timeframe: period.timeframe, captureRate, visitors, passersby };
+      });
+    }
+
+    function renderHourlyGraph(selectedDate, hourlyLabels, hourlyCaptureRates) {
+      const ctx = document.getElementById('hourlyCaptureRateChart').getContext('2d');
+      
+      if (hourlyCaptureRateChart) {
+        hourlyCaptureRateChart.destroy();
+      }
+
+      const filteredLabels = hourlyLabels.slice(7, 22);
+      const filteredCaptureRates = hourlyCaptureRates.slice(7, 22);
+
+      hourlyCaptureRateChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: filteredLabels,
+          datasets: [{
+            label: 'Hourly Capture Rate (%)',
+            data: filteredCaptureRates,
+            backgroundColor: 'rgba(179, 200, 54, 0.6)', 
+            borderColor: 'rgb(179, 200, 54)', 
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Capture Rate (%)'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Hour'
+              },
+              ticks: {
+                callback: function(value, index, values) {
+                  return filteredLabels[index];
+                }
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Hourly Capture Rate for ${selectedDate} (7:00 - 21:00)`,
+              color: '#317521'
+            }
+          }
+        }
+      });
+    }
+
+    function renderHourlyVisitorsPassersbyGraph(selectedDate, hourlyLabels, hourlyVisitors, hourlyPassersby) {
+      const ctx = document.getElementById('hourlyVisitorsPassersbyChart').getContext('2d');
+      
+      if (hourlyVisitorsPassersbyChart) {
+        hourlyVisitorsPassersbyChart.destroy();
+      }
+
+      hourlyVisitorsPassersbyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: hourlyLabels,
+          datasets: [
+            {
+              label: 'Visitors',
+              data: hourlyVisitors,
+              borderColor: 'rgb(179, 200, 54)', 
+              fill: false,
+              yAxisID: 'y-axis-visitors'
+            },
+            {
+              label: 'Passersby',
+              data: hourlyPassersby,
+              borderColor: 'rgb(243, 151, 0)', 
+              fill: false,
+              yAxisID: 'y-axis-passersby'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            'y-axis-visitors': {
+              type: 'linear',
+              position: 'left',
+              title: {
+                display: true,
+                text: 'Visitors'
+              }
+            },
+            'y-axis-passersby': {
+              type: 'linear',
+              position: 'right',
+              title: {
+                display: true,
+                text: 'Passersby'
+              },
+              grid: {
+                drawOnChartArea: false
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Hour'
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Hourly Visitors and Passersby for ${selectedDate}`,
+              color: '#317521'
+            }
+          }
+        }
+      });
+    }
+
+    function renderCumulativeVisitorsPassersbyGraph(selectedDate, hourlyLabels, hourlyVisitors, hourlyPassersby) {
+      const ctx = document.getElementById('cumulativeVisitorsPassersbyChart').getContext('2d');
+      
+      if (cumulativeVisitorsPassersbyChart) {
+        cumulativeVisitorsPassersbyChart.destroy();
+      }
+
+      const cumulativeVisitors = hourlyVisitors.reduce((acc, val) => {
+        acc.push((acc.length > 0 ? acc[acc.length - 1] : 0) + val);
+        return acc;
+      }, []);
+
+      const cumulativePassersby = hourlyPassersby.reduce((acc, val) => {
+        acc.push((acc.length > 0 ? acc[acc.length - 1] : 0) + val);
+        return acc;
+      }, []);
+
+      cumulativeVisitorsPassersbyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: hourlyLabels,
+          datasets: [
+            {
+              label: 'Cumulative Visitors',
+              data: cumulativeVisitors,
+              borderColor: 'rgb(179, 200, 54)', 
+              fill: false,
+              yAxisID: 'y-axis-visitors'
+            },
+            {
+              label: 'Cumulative Passersby',
+              data: cumulativePassersby,
+              borderColor: 'rgb(243, 151, 0)', 
+              fill: false,
+              yAxisID: 'y-axis-passersby'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            'y-axis-visitors': {
+              type: 'linear',
+              position: 'left',
+              title: {
+                display: true,
+                text: 'Cumulative Visitors'
+              }
+            },
+            'y-axis-passersby': {
+              type: 'linear',
+              position: 'right',
+              title: {
+                display: true,
+                text: 'Cumulative Passersby'
+              },
+              grid: {
+                drawOnChartArea: false
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Hour'
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Cumulative Visitors and Passersby for ${selectedDate}`,
+              color: '#317521'
+            }
+          }
+        }
+      });
+    }
+
+    function renderPeriodCaptureRateChart(selectedDate, periodCaptureRates) {
+      const ctx = document.getElementById('periodCaptureRateChart').getContext('2d');
+      
+      if (periodCaptureRateChart) {
+        periodCaptureRateChart.destroy();
+      }
+
+      periodCaptureRateChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: periodCaptureRates.map(period => `${period.name} (${period.timeframe})`),
+          datasets: [{
+            data: periodCaptureRates.map(period => period.captureRate),
+            backgroundColor: [
+              'rgba(179, 200, 54, 0.8)', 
+              'rgba(243, 151, 0, 0.8)', 
+              'rgba(47, 118, 34, 0.8)',
+              'rgba(195, 157, 94, 0.8)' 
+            ],
+            borderColor: [
+              'rgb(179, 200, 54)', 
+              'rgb(243, 151, 0)', 
+              'rgb(47, 118, 34)',
+              'rgb(195, 157, 94)' 
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: `Capture Rate by Period for ${selectedDate}`,
+              color: '#317521'
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const period = periodCaptureRates[context.dataIndex];
+                  return [
+                    `${period.name} (${period.timeframe}):`,
+                    `Capture Rate: ${period.captureRate.toFixed(2)}%`,
+                    `Visitors: ${period.visitors}`,
+                    `Passersby: ${period.passersby}`
+                  ];
+                }
+              }
+            },
+            datalabels: {
+              color: '#fff',
+              font: {
+                weight: 'bold'
+              },
+              formatter: (value, ctx) => {
+                return `${value.toFixed(2)}%`;
+              }
+            }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+    }
+
+    function generateTextAnalysis(selectedDate, periodCaptureRates) {
+      const analysisDiv = document.getElementById('textAnalysis');
+      const totalVisitors = periodCaptureRates.reduce((sum, period) => sum + period.visitors, 0);
+      const totalPassersby = periodCaptureRates.reduce((sum, period) => sum + period.passersby, 0);
+      const overallCaptureRate = (totalVisitors / totalPassersby) * 100;
+
+      let html = `
+        <h3>AI-Driven Capture Rate Analysis for ${selectedDate}</h3>
+        <p>On ${selectedDate}, the healthy food restaurant experienced a total of ${totalVisitors} visitors out of ${totalPassersby} passersby, resulting in an overall capture rate of ${overallCaptureRate.toFixed(2)}%.</p>
+      `;
+
+      let lowestCaptureRate = Infinity;
+      let lowestPeriod = null;
+
+      periodCaptureRates.forEach(period => {
+        let analysis = '';
+        if (period.name === 'Morning') {
+          analysis = `The morning period (${period.timeframe}) saw a capture rate of ${period.captureRate.toFixed(2)}%. This could be attributed to health-conscious workers in the neighborhood stopping by for a nutritious breakfast or grabbing a quick, healthy takeout before heading to their offices.`;
+        } else if (period.name === 'Noon') {
+          analysis = `During the lunch hours (${period.timeframe}), the capture rate was ${period.captureRate.toFixed(2)}%. This is likely the busiest time for the restaurant, as nearby workers seek out healthy lunch options, both for dining in and taking out. The convenience of a quick, nutritious meal appears to be particularly appealing during this time.`;
+        } else if (period.name === 'Afternoon') {
+          analysis = `The afternoon period (${period.timeframe}) recorded a capture rate of ${period.captureRate.toFixed(2)}%. This could reflect people grabbing a healthy afternoon snack, early dinner, or workers picking up a nutritious meal to take home. The flexibility of eat-in or take-out service seems to cater well to different customer needs during this time.`;
+        } else if (period.name === 'Custom') {
+          analysis = `The custom period (${period.timeframe}) showed a capture rate of ${period.captureRate.toFixed(2)}%. This allows for analysis of specific timeframes that might be of particular interest to the restaurant management, helping to identify unique patterns or opportunities.`;
+        }
+
+        if (period.captureRate < lowestCaptureRate) {
+          lowestCaptureRate = period.captureRate;
+          lowestPeriod = period;
+        }
+
+        html += `<p><strong>${period.name} Period:</strong> ${analysis}</p>`;
+      });
+
+      html += `
+        <h4>AI Insights and Improvement Suggestions</h4>
+        <p>The period with the lowest capture rate is the ${lowestPeriod.name} period (${lowestPeriod.timeframe}) at ${lowestPeriod.captureRate.toFixed(2)}%. Here are some AI-generated suggestions to improve this period's performance:</p>
+        <ul>
+          <li><strong>Targeted promotions:</strong> Create time-specific deals or combo meals that are particularly attractive during this period. For example, if it's the afternoon period, consider offering an "afternoon energy boost" package.</li>
+          <li><strong>Menu optimization:</strong> Analyze which menu items are most popular during this time and ensure they are prominently featured. Consider introducing new items that cater specifically to the needs of customers during this period.</li>
+          <li><strong>Marketing push:</strong> Increase your marketing efforts for this specific time slot. Use social media, local advertising, or even push notifications (if you have an app) to remind people about your offerings during this time.</li>
+          <li><strong>Improve visibility:</strong> If passersby are not entering the restaurant, it might be due to lack of awareness. Consider improving your storefront visibility or using sidewalk signs to attract attention during this period.</li>
+          <li><strong>Staff training:</strong> Ensure your staff is well-prepared for the specific challenges of this time period. They should be able to serve customers quickly and efficiently, especially if it's a time when people are in a hurry.</li>
+          <li><strong>Partnership opportunities:</strong> Look for partnership opportunities with local businesses. For example, if it's a slow morning period, partner with nearby offices to offer pre-order breakfast services.</li>
+        </ul>
+        <p>By focusing on improving the ${lowestPeriod.name} period, you have the potential to significantly increase your overall daily capture rate. Remember to continually analyze the data and adjust your strategies based on the results you see.</p>
+      `;
+
+      analysisDiv.innerHTML = html;
+    }
+
+    function exportToExcel() {
+      const wb = XLSX.utils.book_new();
+      
+      // Daily data
+      const dailyData = [
+        ['Date', 'Visitors', 'Passersby', 'Capture Rate (%)'],
+        ...dates.map((date, i) => [date, visitors[i], passersby[i], captureRates[i]])
+      ];
+      const ws1 = XLSX.utils.aoa_to_sheet(dailyData);
+      XLSX.utils.book_append_sheet(wb, ws1, "Daily Data");
+
+      // Hourly data (if available)
+      if (document.getElementById('datePicker').value) {
+        const selectedDate = document.getElementById('datePicker').value;
+        const hourlyData = [
+          ['Hour', 'Visitors', 'Passersby', 'Capture Rate (%)'],
+          ...hourlyLabels.map((hour, i) => [hour, hourlyVisitors[i], hourlyPassersby[i], hourlyCaptureRates[i]])
+        ];
+        const ws2 = XLSX.utils.aoa_to_sheet(hourlyData);
+        XLSX.utils.book_append_sheet(wb, ws2, `Hourly Data ${selectedDate}`);
+
+        // Period data
+        const periodData = [
+          ['Period', 'Timeframe', 'Visitors', 'Passersby', 'Capture Rate (%)'],
+          ...periodCaptureRates.map(period => [period.name, period.timeframe, period.visitors, period.passersby, period.captureRate])
+        ];
+        const ws3 = XLSX.utils.aoa_to_sheet(periodData);
+        XLSX.utils.book_append_sheet(wb, ws3, `Period Data ${selectedDate}`);
+      }
+
+      XLSX.writeFile(wb, "visitor_analysis.xlsx");
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      // Title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.setTextColor(49, 117, 33); // #317521
+      doc.text("Visitor Analysis Report", 105, 15, null, null, "center");
+
+      // Daily Visitors and Passersby Chart
+      doc.setFontSize(16);
+      doc.text("Daily Visitors and Passersby", 105, 30, null, null, "center");
+      const img1 = visitorsPassersbyChart.toBase64Image();
+      doc.addImage(img1, 'PNG', 10, 35, 190, 100);
+
+      // Daily Capture Rate Chart
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.text("Daily Capture Rate", 105, 15, null, null, "center");
+      const img2 = dailyCaptureRateChart.toBase64Image();
+      doc.addImage(img2, 'PNG', 10, 20, 190, 100);
+
+      // Hourly data (if available)
+      if (document.getElementById('datePicker').value) {
+        const selectedDate = document.getElementById('datePicker').value;
+
+        // Hourly Capture Rate Chart
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text(`Hourly Capture Rate for ${selectedDate}`, 105, 15, null, null, "center");
+        const img3 = hourlyCaptureRateChart.toBase64Image();
+        doc.addImage(img3, 'PNG', 10, 20, 190, 100);
+
+        // Hourly Visitors and Passersby Chart
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text(`Hourly Visitors and Passersby for ${selectedDate}`, 105, 15, null, null, "center");
+        const img4 = hourlyVisitorsPassersbyChart.toBase64Image();
+        doc.addImage(img4, 'PNG', 10, 20, 190, 100);
+
+        // Cumulative Visitors and Passersby Chart
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text(`Cumulative Visitors and Passersby for ${selectedDate}`, 105, 15, null, null, "center");
+        const img5 = cumulativeVisitorsPassersbyChart.toBase64Image();
+        doc.addImage(img5, 'PNG', 10, 20, 190, 100);
+
+        // Period Capture Rate Chart
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text(`Capture Rate by Period for ${selectedDate}`, 105, 15, null, null, "center");
+        const img6 = periodCaptureRateChart.toBase64Image();
+        doc.addImage(img6, 'PNG', 50, 20, 110, 110);
+
+        // Period data table
+        doc.autoTable({
+          head: [['Period', 'Timeframe', 'Visitors', 'Passersby', 'Capture Rate (%)']],
+          body: periodCaptureRates.map(period => [
+            period.name,
+            period.timeframe,
+            period.visitors,
+            period.passersby,
+            period.captureRate.toFixed(2)
+          ]),
+          startY: 140,
+        });
+      }
+
+      doc.save("visitor_analysis_report.pdf");
+    }
+
+    // Add event listeners for export buttons
+    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+    document.getElementById('exportPDF').addEventListener('click', exportToPDF);
+  </script>
+</body></html>
